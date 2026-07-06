@@ -53,3 +53,57 @@ export async function updateWorkOrderStatus(formData: FormData) {
   revalidatePath("/");
   revalidatePath(`/work-orders/${workOrderId}`);
 }
+
+export async function addPartToWorkOrder(formData: FormData) {
+  const workOrderId = String(formData.get("workOrderId") ?? "");
+  const partId = String(formData.get("partId") ?? "");
+  const quantityUsed = Number(formData.get("quantityUsed") ?? 0);
+
+  if (!workOrderId || !partId || !Number.isInteger(quantityUsed) || quantityUsed <= 0) {
+    throw new Error("Invalid part usage request.");
+  }
+
+  const part = await prisma.part.findUnique({
+    where: { id: partId },
+  });
+
+  if (!part) {
+    throw new Error("Part not found.");
+  }
+
+  if (part.quantityOnHand < quantityUsed) {
+    throw new Error("Insufficient inventory for this part.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.part.update({
+      where: { id: partId },
+      data: {
+        quantityOnHand: {
+          decrement: quantityUsed,
+        },
+      },
+    });
+
+    await tx.workOrderPart.create({
+      data: {
+        workOrderId,
+        partId,
+        quantityUsed,
+      },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        entityType: "WorkOrder",
+        entityId: workOrderId,
+        action: "PART_USED",
+        oldValue: `${part.name}: ${part.quantityOnHand} on hand`,
+        newValue: `${quantityUsed} used, ${part.quantityOnHand - quantityUsed} remaining`,
+      },
+    });
+  });
+
+  revalidatePath("/");
+  revalidatePath(`/work-orders/${workOrderId}`);
+}

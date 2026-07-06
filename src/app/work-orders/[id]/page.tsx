@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { updateWorkOrderStatus } from "@/app/actions/work-orders";
+import {
+  addPartToWorkOrder,
+  updateWorkOrderStatus,
+} from "@/app/actions/work-orders";
 
 type PageProps = {
   params: Promise<{
@@ -21,37 +24,46 @@ const statusOptions = [
 export default async function WorkOrderDetailPage({ params }: PageProps) {
   const { id } = await params;
 
-  const workOrder = await prisma.workOrder.findUnique({
-    where: { id },
-    include: {
-      customer: true,
-      site: true,
-      assignedTechnician: {
-        include: {
-          user: true,
+  const [workOrder, auditLogs, parts] = await Promise.all([
+    prisma.workOrder.findUnique({
+      where: { id },
+      include: {
+        customer: true,
+        site: true,
+        assignedTechnician: {
+          include: {
+            user: true,
+          },
+        },
+        partsUsed: {
+          include: {
+            part: true,
+          },
+          orderBy: {
+            id: "desc",
+          },
         },
       },
-      partsUsed: {
-        include: {
-          part: true,
-        },
+    }),
+    prisma.auditLog.findMany({
+      where: {
+        entityType: "WorkOrder",
+        entityId: id,
       },
-    },
-  });
+      orderBy: {
+        createdAt: "desc",
+      },
+    }),
+    prisma.part.findMany({
+      orderBy: {
+        name: "asc",
+      },
+    }),
+  ]);
 
   if (!workOrder) {
     notFound();
   }
-
-  const auditLogs = await prisma.auditLog.findMany({
-    where: {
-      entityType: "WorkOrder",
-      entityId: workOrder.id,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
@@ -119,6 +131,43 @@ export default async function WorkOrderDetailPage({ params }: PageProps) {
               </form>
             ))}
           </div>
+        </div>
+
+        <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/70 p-6">
+          <h2 className="text-xl font-semibold">Record Part Usage</h2>
+
+          <form action={addPartToWorkOrder} className="mt-4 grid gap-4 md:grid-cols-[1fr_160px_auto]">
+            <input type="hidden" name="workOrderId" value={workOrder.id} />
+
+            <select
+              name="partId"
+              className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100"
+              required
+            >
+              <option value="">Select part</option>
+              {parts.map((part) => (
+                <option key={part.id} value={part.id}>
+                  {part.name} | {part.quantityOnHand} on hand
+                </option>
+              ))}
+            </select>
+
+            <input
+              name="quantityUsed"
+              type="number"
+              min="1"
+              defaultValue="1"
+              className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100"
+              required
+            />
+
+            <button
+              type="submit"
+              className="rounded-xl border border-slate-700 bg-slate-100 px-5 py-3 text-sm font-medium text-slate-950 hover:bg-white"
+            >
+              Add Part
+            </button>
+          </form>
         </div>
 
         <div className="mt-6 grid gap-6 md:grid-cols-2">
