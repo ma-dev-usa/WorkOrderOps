@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { WorkOrderStatus } from "@/generated/prisma/client";
+import { Priority, WorkOrderStatus } from "@/generated/prisma/client";
 
 const validStatuses = new Set<string>([
   "CREATED",
@@ -106,4 +107,59 @@ export async function addPartToWorkOrder(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath(`/work-orders/${workOrderId}`);
+}
+
+
+const validPriorities = new Set<string>(["LOW", "MEDIUM", "HIGH", "URGENT"]);
+
+export async function createWorkOrder(formData: FormData) {
+  const customerId = String(formData.get("customerId") ?? "");
+  const siteId = String(formData.get("siteId") ?? "");
+  const assignedTechnicianIdRaw = String(formData.get("assignedTechnicianId") ?? "");
+  const title = String(formData.get("title") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim();
+  const priority = String(formData.get("priority") ?? "MEDIUM");
+  const slaHours = Number(formData.get("slaHours") ?? 24);
+
+  if (!customerId || !siteId || !title || !description) {
+    throw new Error("Missing required work order fields.");
+  }
+
+  if (!validPriorities.has(priority)) {
+    throw new Error("Invalid priority.");
+  }
+
+  if (!Number.isFinite(slaHours) || slaHours <= 0) {
+    throw new Error("Invalid SLA hours.");
+  }
+
+  const assignedTechnicianId =
+    assignedTechnicianIdRaw === "" ? null : assignedTechnicianIdRaw;
+
+  const created = await prisma.workOrder.create({
+    data: {
+      customerId,
+      siteId,
+      assignedTechnicianId,
+      title,
+      description,
+      priority: priority as Priority,
+      status: assignedTechnicianId ? WorkOrderStatus.ASSIGNED : WorkOrderStatus.CREATED,
+      slaDueAt: new Date(Date.now() + slaHours * 60 * 60 * 1000),
+      slaStatus: "ON_TRACK",
+    },
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      entityType: "WorkOrder",
+      entityId: created.id,
+      action: "CREATED_FROM_UI",
+      oldValue: null,
+      newValue: `${created.title} created with status ${created.status}`,
+    },
+  });
+
+  revalidatePath("/");
+  redirect(`/work-orders/${created.id}`);
 }

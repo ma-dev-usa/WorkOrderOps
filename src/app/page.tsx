@@ -86,8 +86,17 @@ export default async function Home() {
             </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/70 px-5 py-4 text-sm text-slate-300">
-            Demo database: PostgreSQL + Prisma
+          <div className="flex flex-col gap-3 md:items-end">
+            <Link
+              href="/work-orders/new"
+              className="rounded-xl border border-slate-700 bg-slate-100 px-5 py-3 text-sm font-medium text-slate-950 hover:bg-white"
+            >
+              New Work Order
+            </Link>
+
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/70 px-5 py-4 text-sm text-slate-300">
+              Demo database: PostgreSQL + Prisma
+            </div>
           </div>
         </div>
 
