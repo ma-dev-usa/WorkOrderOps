@@ -1,0 +1,142 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  DISPATCHER
+  TECHNICIAN
+}
+
+enum WorkOrderStatus {
+  CREATED
+  ASSIGNED
+  IN_PROGRESS
+  WAITING_ON_PARTS
+  COMPLETED
+  CANCELED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum SlaStatus {
+  ON_TRACK
+  AT_RISK
+  BREACHED
+}
+
+enum TechnicianAvailability {
+  AVAILABLE
+  BUSY
+  OFFLINE
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  role      UserRole
+  createdAt DateTime @default(now())
+
+  technician Technician?
+  auditLogs  AuditLog[]
+}
+
+model Customer {
+  id          String   @id @default(cuid())
+  name        String
+  contactName String
+  phone       String
+  email       String
+  createdAt   DateTime @default(now())
+
+  sites      Site[]
+  workOrders WorkOrder[]
+}
+
+model Site {
+  id         String @id @default(cuid())
+  customerId String
+  address    String
+  city       String
+  state      String
+  zone       String
+
+  customer   Customer    @relation(fields: [customerId], references: [id])
+  workOrders WorkOrder[]
+}
+
+model Technician {
+  id                 String                 @id @default(cuid())
+  userId             String                 @unique
+  skillLevel          String
+  zone               String
+  availabilityStatus TechnicianAvailability @default(AVAILABLE)
+
+  user       User        @relation(fields: [userId], references: [id])
+  workOrders WorkOrder[]
+}
+
+model WorkOrder {
+  id                  String          @id @default(cuid())
+  customerId           String
+  siteId               String
+  assignedTechnicianId String?
+  title                String
+  description          String
+  priority             Priority
+  status               WorkOrderStatus @default(CREATED)
+  slaDueAt             DateTime
+  slaStatus            SlaStatus       @default(ON_TRACK)
+  createdAt            DateTime        @default(now())
+  completedAt          DateTime?
+
+  customer           Customer        @relation(fields: [customerId], references: [id])
+  site               Site            @relation(fields: [siteId], references: [id])
+  assignedTechnician Technician?     @relation(fields: [assignedTechnicianId], references: [id])
+  partsUsed          WorkOrderPart[]
+}
+
+model Part {
+  id             String @id @default(cuid())
+  sku            String @unique
+  name           String
+  quantityOnHand Int
+  reorderLevel   Int
+  unitCostCents  Int
+
+  workOrderParts WorkOrderPart[]
+}
+
+model WorkOrderPart {
+  id           String @id @default(cuid())
+  workOrderId  String
+  partId       String
+  quantityUsed Int
+
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id])
+  part      Part      @relation(fields: [partId], references: [id])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  action     String
+  oldValue   String?
+  newValue   String?
+  userId     String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+}

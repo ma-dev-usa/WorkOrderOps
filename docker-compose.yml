@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: workorderops-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: workorderops
+      POSTGRES_PASSWORD: workorderops
+      POSTGRES_DB: workorderops
+    ports:
+      - "5432:5432"
+    volumes:
+      - workorderops_pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    container_name: workorderops-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+volumes:
+  workorderops_pgdata:
