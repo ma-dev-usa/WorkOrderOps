@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 
 export default async function Home() {
@@ -121,7 +122,12 @@ export default async function Home() {
                   {recentWorkOrders.map((workOrder) => (
                     <tr key={workOrder.id} className="bg-slate-950/40">
                       <td className="px-4 py-3">
-                        <div className="font-medium">{workOrder.title}</div>
+                        <Link
+                          href={`/work-orders/${workOrder.id}`}
+                          className="font-medium hover:text-blue-300"
+                        >
+                          {workOrder.title}
+                        </Link>
                         <div className="text-xs text-slate-500">
                           {workOrder.site.city}, {workOrder.site.state}
                         </div>
