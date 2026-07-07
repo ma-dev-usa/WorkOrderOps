@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { calculateSlaStatus } from "@/lib/sla";
 import { Priority, WorkOrderStatus } from "@/generated/prisma/client";
 
 const validStatuses = new Set<string>([
@@ -30,26 +31,52 @@ export async function updateWorkOrderStatus(formData: FormData) {
     throw new Error("Work order not found.");
   }
 
+  const now = new Date();
+  const status = nextStatus as WorkOrderStatus;
   const completedAt =
-    nextStatus === "COMPLETED" ? new Date() : existing.completedAt;
+    status === "COMPLETED" ? existing.completedAt ?? now : null;
+  const slaStatus = calculateSlaStatus(
+    {
+      ...existing,
+      status,
+      completedAt,
+    },
+    now,
+  );
 
   const updated = await prisma.workOrder.update({
     where: { id: workOrderId },
     data: {
-      status: nextStatus as WorkOrderStatus,
+      status,
       completedAt,
+      slaStatus,
     },
   });
 
-  await prisma.auditLog.create({
-    data: {
-      entityType: "WorkOrder",
-      entityId: updated.id,
-      action: "STATUS_UPDATED",
-      oldValue: existing.status,
-      newValue: nextStatus,
-    },
-  });
+  await prisma.$transaction([
+    prisma.auditLog.create({
+      data: {
+        entityType: "WorkOrder",
+        entityId: updated.id,
+        action: "STATUS_UPDATED",
+        oldValue: existing.status,
+        newValue: nextStatus,
+      },
+    }),
+    ...(existing.slaStatus !== slaStatus
+      ? [
+          prisma.auditLog.create({
+            data: {
+              entityType: "WorkOrder",
+              entityId: updated.id,
+              action: "SLA_RECALCULATED",
+              oldValue: existing.slaStatus,
+              newValue: slaStatus,
+            },
+          }),
+        ]
+      : []),
+  ]);
 
   revalidatePath("/");
   revalidatePath(`/work-orders/${workOrderId}`);
@@ -136,6 +163,12 @@ export async function createWorkOrder(formData: FormData) {
   const assignedTechnicianId =
     assignedTechnicianIdRaw === "" ? null : assignedTechnicianIdRaw;
 
+  const now = new Date();
+  const status = assignedTechnicianId
+    ? WorkOrderStatus.ASSIGNED
+    : WorkOrderStatus.CREATED;
+  const slaDueAt = new Date(now.getTime() + slaHours * 60 * 60 * 1000);
+
   const created = await prisma.workOrder.create({
     data: {
       customerId,
@@ -144,9 +177,17 @@ export async function createWorkOrder(formData: FormData) {
       title,
       description,
       priority: priority as Priority,
-      status: assignedTechnicianId ? WorkOrderStatus.ASSIGNED : WorkOrderStatus.CREATED,
-      slaDueAt: new Date(Date.now() + slaHours * 60 * 60 * 1000),
-      slaStatus: "ON_TRACK",
+      status,
+      slaDueAt,
+      slaStatus: calculateSlaStatus(
+        {
+          createdAt: now,
+          slaDueAt,
+          status,
+          completedAt: null,
+        },
+        now,
+      ),
     },
   });
 

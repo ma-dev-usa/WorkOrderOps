@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { recalculateSlaStatuses } from "@/app/actions/sla";
 import { prisma } from "@/lib/prisma";
 
 export default async function Home() {
@@ -87,12 +88,23 @@ export default async function Home() {
           </div>
 
           <div className="flex flex-col gap-3 md:items-end">
-            <Link
-              href="/work-orders/new"
-              className="rounded-xl border border-slate-700 bg-slate-100 px-5 py-3 text-sm font-medium text-slate-950 hover:bg-white"
-            >
-              New Work Order
-            </Link>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <form action={recalculateSlaStatuses}>
+                <button
+                  type="submit"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-5 py-3 text-sm font-medium text-slate-100 hover:bg-slate-800"
+                >
+                  Recalculate SLA
+                </button>
+              </form>
+
+              <Link
+                href="/work-orders/new"
+                className="rounded-xl border border-slate-700 bg-slate-100 px-5 py-3 text-center text-sm font-medium text-slate-950 hover:bg-white"
+              >
+                New Work Order
+              </Link>
+            </div>
 
             <div className="rounded-2xl border border-slate-800 bg-slate-900/70 px-5 py-4 text-sm text-slate-300">
               Demo database: PostgreSQL + Prisma
