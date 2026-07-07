@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import {
   addPartToWorkOrder,
+  reassignWorkOrderTechnician,
   updateWorkOrderStatus,
 } from "@/app/actions/work-orders";
 
@@ -24,7 +25,7 @@ const statusOptions = [
 export default async function WorkOrderDetailPage({ params }: PageProps) {
   const { id } = await params;
 
-  const [workOrder, auditLogs, parts] = await Promise.all([
+  const [workOrder, auditLogs, parts, technicians] = await Promise.all([
     prisma.workOrder.findUnique({
       where: { id },
       include: {
@@ -58,6 +59,19 @@ export default async function WorkOrderDetailPage({ params }: PageProps) {
       orderBy: {
         name: "asc",
       },
+    }),
+    prisma.technician.findMany({
+      include: {
+        user: true,
+        workOrders: {
+          where: {
+            status: {
+              notIn: ["COMPLETED", "CANCELED"],
+            },
+          },
+        },
+      },
+      orderBy: [{ zone: "asc" }, { user: { name: "asc" } }],
     }),
   ]);
 
@@ -131,6 +145,37 @@ export default async function WorkOrderDetailPage({ params }: PageProps) {
               </form>
             ))}
           </div>
+        </div>
+
+        <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/70 p-6">
+          <h2 className="text-xl font-semibold">Reassign Technician</h2>
+
+          <form
+            action={reassignWorkOrderTechnician}
+            className="mt-4 grid gap-4 md:grid-cols-[1fr_auto]"
+          >
+            <input type="hidden" name="workOrderId" value={workOrder.id} />
+
+            <select
+              name="assignedTechnicianId"
+              defaultValue={workOrder.assignedTechnicianId ?? ""}
+              className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100"
+            >
+              <option value="">Unassigned</option>
+              {technicians.map((technician) => (
+                <option key={technician.id} value={technician.id}>
+                  {technician.user.name} | {technician.zone} | {technician.availabilityStatus} | Active: {technician.workOrders.length}
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="submit"
+              className="rounded-xl border border-slate-700 bg-slate-100 px-5 py-3 text-sm font-medium text-slate-950 hover:bg-white"
+            >
+              Reassign
+            </button>
+          </form>
         </div>
 
         <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/70 p-6">

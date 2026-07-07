@@ -298,3 +298,97 @@ export async function reassignWorkOrderTechnician(formData: FormData): Promise<v
   revalidatePath("/");
   revalidatePath(`/work-orders/${workOrderId}`);
 }
+
+export async function reassignWorkOrderTechnician(formData: FormData): Promise<void> {
+  const workOrderId = String(formData.get("workOrderId") ?? "");
+  const assignedTechnicianIdRaw = String(
+    formData.get("assignedTechnicianId") ?? "",
+  );
+
+  if (!workOrderId) {
+    throw new Error("Missing work order ID.");
+  }
+
+  const assignedTechnicianId =
+    assignedTechnicianIdRaw === "" ? null : assignedTechnicianIdRaw;
+
+  const existing = await prisma.workOrder.findUnique({
+    where: {
+      id: workOrderId,
+    },
+    include: {
+      assignedTechnician: {
+        include: {
+          user: true,
+        },
+      },
+    },
+  });
+
+  if (!existing) {
+    throw new Error("Work order not found.");
+  }
+
+  const nextTechnician = assignedTechnicianId
+    ? await prisma.technician.findUnique({
+        where: {
+          id: assignedTechnicianId,
+        },
+        include: {
+          user: true,
+        },
+      })
+    : null;
+
+  if (assignedTechnicianId && !nextTechnician) {
+    throw new Error("Technician not found.");
+  }
+
+  if (existing.assignedTechnicianId === assignedTechnicianId) {
+    revalidatePath("/");
+    revalidatePath(`/work-orders/${workOrderId}`);
+    return;
+  }
+
+  const nextStatus =
+    assignedTechnicianId && existing.status === WorkOrderStatus.CREATED
+      ? WorkOrderStatus.ASSIGNED
+      : existing.status;
+
+  await prisma.$transaction([
+    prisma.workOrder.update({
+      where: {
+        id: workOrderId,
+      },
+      data: {
+        assignedTechnicianId,
+        status: nextStatus,
+      },
+    }),
+    prisma.auditLog.create({
+      data: {
+        entityType: "WorkOrder",
+        entityId: workOrderId,
+        action: "TECHNICIAN_REASSIGNED",
+        oldValue: existing.assignedTechnician?.user.name ?? "Unassigned",
+        newValue: nextTechnician?.user.name ?? "Unassigned",
+      },
+    }),
+    ...(existing.status !== nextStatus
+      ? [
+          prisma.auditLog.create({
+            data: {
+              entityType: "WorkOrder",
+              entityId: workOrderId,
+              action: "STATUS_UPDATED",
+              oldValue: existing.status,
+              newValue: nextStatus,
+            },
+          }),
+        ]
+      : []),
+  ]);
+
+  revalidatePath("/");
+  revalidatePath(`/work-orders/${workOrderId}`);
+}
